@@ -1,8 +1,8 @@
 package main
 
 import (
+	"os"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -16,11 +16,11 @@ import (
 
 // API parameters
 var (
-	latitude         = flag.String("latitude", "42.6975", "Latitude of location")
-	longitude        = flag.String("longitude", "23.3241", "Longitude of location")
-	timezone         = flag.String("timezone", "Europe/Sofia", "Timezone of location")
-	weatherFields    = flag.String("weather_fields", "temperature_2m,apparent_temperature,relative_humidity_2m", "Comma-separated list of weather fields")
-	airQualityFields = flag.String("air_quality_fields", "european_aqi,us_aqi,pm10,pm2_5", "Comma-separated list of air quality fields")
+	latitude string
+	longitude string
+	timezone string
+	weatherFields string
+	airQualityFields string
 )
 
 type MetricMap map[string]prometheus.Gauge
@@ -49,7 +49,7 @@ func fetchWeatherData() {
 	for {
 		apiURL := fmt.Sprintf(
 			"https://api.open-meteo.com/v1/forecast?latitude=%s&longitude=%s&current=%s&timezone=%s",
-			*latitude, *longitude, *weatherFields, *timezone)
+			latitude, longitude, weatherFields, timezone)
 
 		resp, err := http.Get(apiURL)
 		if err != nil {
@@ -88,7 +88,7 @@ func fetchAirQualityData() {
 	for {
 		apiURL := fmt.Sprintf(
 			"https://air-quality-api.open-meteo.com/v1/air-quality?latitude=%s&longitude=%s&current=%s&timezone=%s",
-			*latitude, *longitude, *airQualityFields, *timezone)
+			latitude, longitude, airQualityFields, timezone)
 
 		resp, err := http.Get(apiURL)
 		if err != nil {
@@ -123,17 +123,45 @@ func fetchAirQualityData() {
 	}
 }
 
-func main() {
-	// Parse command-line flags
-	flag.Parse()
+func init() {
+	// Read environment variables
+	weatherFields = os.Getenv("WEATHER_FIELDS")
+	if weatherFields == "" {
+		weatherFields = "temperature_2m,apparent_temperature,relative_humidity_2m"
+	}
 
+	airQualityFields = os.Getenv("AIR_QUALITY_FIELDS")
+	if airQualityFields == "" {
+		airQualityFields = "european_aqi,us_aqi,pm10,pm2_5"
+	}
+
+	latitude = os.Getenv("LATITUDE")
+	if latitude == "" {
+		latitude = "42.6975" // Default value
+	}
+
+	longitude = os.Getenv("LONGITUDE")
+	if longitude == "" {
+		longitude = "23.3241" // Default value
+	}
+
+	timezone = os.Getenv("TIMEZONE")
+	if timezone == "" {
+		timezone = "Europe/Sofia" // Default value
+	}
+
+	fmt.Println("Weather Fields:", weatherFields)
+	fmt.Println("Air Quality Fields:", airQualityFields)
+	fmt.Println("Latitude:", latitude)
+	fmt.Println("Longitude:", longitude)
+	fmt.Println("Timezone:", timezone)
+}
+
+func main() {
 	// Start fetching data in separate goroutines
 	go fetchWeatherData()
 	go fetchAirQualityData()
 
-	// Serve metrics endpoint
 	http.Handle("/metrics", promhttp.Handler())
-	log.Printf("Weather exporter running on :8080/metrics with Latitude: %s, Longitude: %s, Timezone: %s, Weather Fields: %s, Air Quality Fields: %s",
-		*latitude, *longitude, *timezone, *weatherFields, *airQualityFields)
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
